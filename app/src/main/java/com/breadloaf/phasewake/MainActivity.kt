@@ -1,9 +1,15 @@
 package com.breadloaf.phasewake
 
 import android.annotation.SuppressLint
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,9 +60,17 @@ fun AlarmApp() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = { optimalWakeTime = calculateBestWakeTime(latestWakeTime) }) {
+        Button(onClick = {
+            if (hasExactAlarmPermission(context)) {
+                optimalWakeTime = calculateBestWakeTime(latestWakeTime)
+                optimalWakeTime?.let { scheduleAlarm(context, it) }
+            } else {
+                requestExactAlarmPermission(context)
+            }
+        }) {
             Text(text = "Going to Bed")
         }
+
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -126,4 +140,32 @@ fun formatTime(calendar: Calendar): String {
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
     return String.format("%02d:%02d", hour, minute)
+}
+
+@SuppressLint("ScheduleExactAlarm")
+fun scheduleAlarm(context: Context, wakeTime: Calendar) {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val intent = Intent(context, AlarmReceiver::class.java)
+    val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, wakeTime.timeInMillis, pendingIntent)
+}
+
+fun hasExactAlarmPermission(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.canScheduleExactAlarms()
+    } else {
+        true
+    }
+}
+
+fun requestExactAlarmPermission(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = android.net.Uri.parse("package:" + context.packageName)
+        }
+        context.startActivity(intent)
+        Toast.makeText(context, "Enable 'Exact Alarms' in settings.", Toast.LENGTH_LONG).show()
+    }
 }
