@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -30,13 +34,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            AlarmApp()
+            MainScreen()
         }
     }
 }
 
 @Composable
-fun AlarmApp() {
+fun MainScreen() {
     val context = LocalContext.current
     var latestWakeTime by remember { mutableStateOf(Calendar.getInstance()) }
     var optimalWakeTime by remember { mutableStateOf<Calendar?>(null) }
@@ -65,20 +69,27 @@ fun AlarmApp() {
         Button(onClick = {
             if (hasExactAlarmPermission(context)) {
                 optimalWakeTime = calculateBestWakeTime(latestWakeTime)
-                optimalWakeTime?.let { scheduleAlarm(context, it) }
+
+                optimalWakeTime?.let {
+                    scheduleAlarm(context, it)
+                    saveAlarm(context, it)
+                }
             } else {
                 requestExactAlarmPermission(context)
             }
         }) {
-            Text(text = "Going to Bed")
+            Text("Going to Bed")
         }
-
 
         Spacer(modifier = Modifier.height(16.dp))
 
         optimalWakeTime?.let {
             Text(text = "Optimal Wake-Up: ${formatTime(it)}")
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ShowAlarms(context = context)
     }
 
     if (showTimePicker) {
@@ -136,6 +147,27 @@ fun calculateBestWakeTime(latestWakeTime: Calendar): Calendar {
     return wakeTime
 }
 
+@Composable
+fun ShowAlarms(context: Context) {
+    val sharedPreferences = context.getSharedPreferences("alarms", Context.MODE_PRIVATE)
+    val alarmTimes = sharedPreferences.all.entries.map { it.key }
+
+    LazyColumn {
+        items(alarmTimes) { alarmTime ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Alarm set for: $alarmTime")
+                IconButton(onClick = {
+                    removeAlarm(context, alarmTime)
+                }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete Alarm")
+                }
+            }
+        }
+    }
+}
 
 @SuppressLint("DefaultLocale")
 fun formatTime(calendar: Calendar): String {
@@ -183,5 +215,35 @@ fun requestExactAlarmPermission(context: Context) {
         }
         context.startActivity(intent)
         Toast.makeText(context, "Enable 'Exact Alarms' in settings.", Toast.LENGTH_LONG).show()
+    }
+}
+
+fun saveAlarm(context: Context, wakeTime: Calendar) {
+    val sharedPreferences = context.getSharedPreferences("alarms", Context.MODE_PRIVATE)
+    val editor = sharedPreferences.edit()
+
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val formattedTime = formatter.format(wakeTime.time)
+
+    editor.putString(formattedTime, wakeTime.timeInMillis.toString())
+    editor.apply()
+}
+
+fun removeAlarm(context: Context, alarmTime: String) {
+    val sharedPreferences = context.getSharedPreferences("alarms", Context.MODE_PRIVATE)
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+    val alarmTimeMillis = sharedPreferences.getString(alarmTime, null)?.toLongOrNull()
+
+    if (alarmTimeMillis != null) {
+        val intent = Intent(context, AlarmReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        alarmManager.cancel(pendingIntent)
+
+        sharedPreferences.edit().remove(alarmTime).apply()
+
+        Log.d("AlarmScheduler", "Alarm for $alarmTime removed.")
+        Toast.makeText(context, "Alarm for $alarmTime removed.", Toast.LENGTH_SHORT).show()
     }
 }
