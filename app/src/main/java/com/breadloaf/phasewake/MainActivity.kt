@@ -6,9 +6,11 @@ import android.app.PendingIntent
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
+import android.icu.text.SimpleDateFormat
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -146,9 +148,23 @@ fun formatTime(calendar: Calendar): String {
 fun scheduleAlarm(context: Context, wakeTime: Calendar) {
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     val intent = Intent(context, AlarmReceiver::class.java)
-    val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    val pendingIntent = PendingIntent.getBroadcast(
+        context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+        Log.e("AlarmScheduler", "Exact alarm permission is missing!")
+        Toast.makeText(context, "Alarm permission is required", Toast.LENGTH_LONG).show()
+        return
+    }
 
     alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, wakeTime.timeInMillis, pendingIntent)
+
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val formattedTime = formatter.format(wakeTime.time)
+
+    Log.d("AlarmScheduler", "Alarm scheduled for: $formattedTime")
+    Toast.makeText(context, "Alarm set for $formattedTime", Toast.LENGTH_LONG).show()
 }
 
 fun hasExactAlarmPermission(context: Context): Boolean {
